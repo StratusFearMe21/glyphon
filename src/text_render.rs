@@ -2,7 +2,7 @@ use crate::{
     ColorMode, FontSystem, GlyphDetails, GlyphToRender, GpuCacheStatus, Params, PrepareError,
     RenderError, Resolution, SwashCache, SwashContent, TextArea, TextAtlas,
 };
-use std::{iter, mem::size_of, slice, sync::Arc};
+use std::{iter, mem::size_of, ops::Deref, slice, sync::Arc};
 use wgpu::{
     Buffer, BufferDescriptor, BufferUsages, DepthStencilState, Device, Extent3d, ImageCopyTexture,
     ImageDataLayout, IndexFormat, MultisampleState, Origin3d, Queue, RenderPass, RenderPipeline,
@@ -61,14 +61,14 @@ impl TextRenderer {
     }
 
     /// Prepares all of the provided text areas for rendering.
-    pub fn prepare_with_depth<'a>(
+    pub fn prepare_with_depth<'a, A: AsRef<cosmic_text::Buffer>, T: Deref<Target = A>>(
         &mut self,
         device: &Device,
         queue: &Queue,
         font_system: &mut FontSystem,
         atlas: &mut TextAtlas,
         screen_resolution: Resolution,
-        text_areas: impl IntoIterator<Item = TextArea<'a>>,
+        text_areas: impl IntoIterator<Item = TextArea<A, T>>,
         cache: &mut SwashCache,
         mut metadata_to_depth: impl FnMut(usize) -> f32,
     ) -> Result<(), PrepareError> {
@@ -91,7 +91,7 @@ impl TextRenderer {
         let mut glyphs_added = 0;
 
         for text_area in text_areas {
-            for run in text_area.buffer.layout_runs() {
+            for run in text_area.buffer.as_ref().layout_runs() {
                 for glyph in run.glyphs.iter() {
                     let physical_glyph =
                         glyph.physical((text_area.left, text_area.top), text_area.scale);
@@ -263,10 +263,17 @@ impl TextRenderer {
                         height = bounds_max_y - y;
                     }
 
-                    let color = match glyph.color_opt {
+                    let mut color = match glyph.color_opt {
                         Some(some) => some,
                         None => text_area.default_color,
                     };
+
+                    color = super::Color::rgba(
+                        color.r(),
+                        color.g(),
+                        color.b(),
+                        (color.a() as f32 * text_area.opacity + 0.5) as u8,
+                    );
 
                     let depth = metadata_to_depth(glyph.metadata);
 
@@ -281,6 +288,7 @@ impl TextRenderer {
                                 match atlas.color_mode {
                                     ColorMode::Accurate => TextColorConversion::ConvertToLinear,
                                     ColorMode::Web => TextColorConversion::None,
+                                    ColorMode::Egui => TextColorConversion::GammaMultiply,
                                 } as u16,
                             ],
                             depth,
@@ -362,14 +370,14 @@ impl TextRenderer {
         Ok(())
     }
 
-    pub fn prepare<'a>(
+    pub fn prepare<'a, A: AsRef<cosmic_text::Buffer>, T: Deref<Target = A>>(
         &mut self,
         device: &Device,
         queue: &Queue,
         font_system: &mut FontSystem,
         atlas: &mut TextAtlas,
         screen_resolution: Resolution,
-        text_areas: impl IntoIterator<Item = TextArea<'a>>,
+        text_areas: impl IntoIterator<Item = TextArea<A, T>>,
         cache: &mut SwashCache,
     ) -> Result<(), PrepareError> {
         self.prepare_with_depth(
@@ -413,9 +421,12 @@ impl TextRenderer {
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[allow(dead_code)]
 pub enum ContentType {
     Color = 0,
     Mask = 1,
+    // Used in shader, never instantiate
+    ColorEgui = 2,
 }
 
 #[repr(u16)]
@@ -423,6 +434,7 @@ pub enum ContentType {
 enum TextColorConversion {
     None = 0,
     ConvertToLinear = 1,
+    GammaMultiply = 2,
 }
 
 fn next_copy_buffer_size(size: u64) -> u64 {

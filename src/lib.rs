@@ -8,6 +8,8 @@ mod error;
 mod text_atlas;
 mod text_render;
 
+use std::ops::Deref;
+
 pub use error::{PrepareError, RenderError};
 pub use text_atlas::{ColorMode, TextAtlas};
 pub use text_render::TextRenderer;
@@ -99,15 +101,17 @@ impl Default for TextBounds {
 
 /// A text area containing text to be rendered along with its overflow behavior.
 #[derive(Clone)]
-pub struct TextArea<'a> {
+pub struct TextArea<A: AsRef<Buffer>, T: Deref<Target = A>> {
     /// The buffer containing the text to be rendered.
-    pub buffer: &'a Buffer,
+    pub buffer: T,
     /// The left edge of the buffer.
     pub left: f32,
     /// The top edge of the buffer.
     pub top: f32,
     /// The scaling to apply to the buffer.
     pub scale: f32,
+    /// The transparency of the final buffer
+    pub opacity: f32,
     /// The visible bounds of the text area. This is used to clip the text and doesn't have to
     /// match the `left` and `top` values.
     pub bounds: TextBounds,

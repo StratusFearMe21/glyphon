@@ -25,11 +25,13 @@ async fn run() {
     // Set up window
     let (width, height) = (800, 600);
     let event_loop = EventLoop::new().unwrap();
-    let window = Arc::new(WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(width as f64, height as f64))
-        .with_title("glyphon hello world")
-        .build(&event_loop)
-        .unwrap());
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_inner_size(LogicalSize::new(width as f64, height as f64))
+            .with_title("glyphon hello world")
+            .build(&event_loop)
+            .unwrap(),
+    );
     let size = window.inner_size();
     let scale_factor = window.scale_factor();
 
@@ -51,7 +53,9 @@ async fn run() {
         .await
         .unwrap();
 
-    let surface = instance.create_surface(window.clone()).expect("Create surface");
+    let surface = instance
+        .create_surface(window.clone())
+        .expect("Create surface");
     let swapchain_format = TextureFormat::Bgra8UnormSrgb;
     let mut config = SurfaceConfiguration {
         usage: TextureUsages::RENDER_ATTACHMENT,
@@ -71,13 +75,18 @@ async fn run() {
     let mut atlas = TextAtlas::new(&device, &queue, swapchain_format);
     let mut text_renderer =
         TextRenderer::new(&mut atlas, &device, MultisampleState::default(), None);
-    let mut buffer = Buffer::new(&mut font_system, Metrics::new(30.0, 42.0));
+    let mut buffer = Buffer::new(&mut font_system, Metrics::new(24.0, 24.0 * 1.25));
 
     let physical_width = (width as f64 * scale_factor) as f32;
     let physical_height = (height as f64 * scale_factor) as f32;
 
     buffer.set_size(&mut font_system, physical_width, physical_height);
-    buffer.set_text(&mut font_system, "Hello world! 👋\nThis is rendered with 🦅 glyphon 🦁\nThe text below should be partially clipped.\na b c d e f g h i j k l m n o p q r s t u v w x y z", Attrs::new().family(Family::SansSerif), Shaping::Advanced);
+    buffer.set_text(
+        &mut font_system,
+        include_str!("ligatures.txt"),
+        Attrs::new().family(Family::Name("Ubuntu")),
+        Shaping::Advanced,
+    );
     buffer.shape_until_scroll(&mut font_system);
 
     event_loop
@@ -92,6 +101,9 @@ async fn run() {
                         config.width = size.width;
                         config.height = size.height;
                         surface.configure(&device, &config);
+                        let physical_width = (size.width as f64 * scale_factor) as f32;
+                        let physical_height = (size.height as f64 * scale_factor) as f32;
+                        buffer.set_size(&mut font_system, physical_width, physical_height);
                         window.request_redraw();
                     }
                     WindowEvent::RedrawRequested => {
@@ -107,14 +119,15 @@ async fn run() {
                                 },
                                 [TextArea {
                                     buffer: &buffer,
-                                    left: 10.0,
-                                    top: 10.0,
-                                    scale: 1.0,
+                                    left: 10.43254353,
+                                    top: 10.6746563465346,
+                                    scale: 0.56,
+                                    opacity: 1.0,
                                     bounds: TextBounds {
                                         left: 0,
                                         top: 0,
-                                        right: 600,
-                                        bottom: 160,
+                                        right: i32::MAX,
+                                        bottom: i32::MAX,
                                     },
                                     default_color: Color::rgb(255, 255, 255),
                                 }],

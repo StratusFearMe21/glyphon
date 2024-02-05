@@ -251,6 +251,10 @@ pub enum ColorMode {
     /// This mode should be used to render to a linear RGB texture containing
     /// sRGB colors.
     Web,
+
+    /// Specifically for using glyphon with `egui_wgpu`, this gamma muliplies all
+    /// colors so that they look right in egui
+    Egui,
 }
 
 /// An atlas containing a cache of rasterized glyphs that can be rendered.
@@ -402,7 +406,7 @@ impl TextAtlas {
             queue,
             Kind::Color {
                 srgb: match color_mode {
-                    ColorMode::Accurate => true,
+                    ColorMode::Accurate | ColorMode::Egui => true,
                     ColorMode::Web => false,
                 },
             },
@@ -470,7 +474,9 @@ impl TextAtlas {
     ) -> bool {
         let did_grow = match content_type {
             ContentType::Mask => self.mask_atlas.grow(device, queue, font_system, cache),
-            ContentType::Color => self.color_atlas.grow(device, queue, font_system, cache),
+            ContentType::Color | ContentType::ColorEgui => {
+                self.color_atlas.grow(device, queue, font_system, cache)
+            }
         };
 
         if did_grow {
@@ -489,7 +495,7 @@ impl TextAtlas {
 
     pub(crate) fn inner_for_content_mut(&mut self, content_type: ContentType) -> &mut InnerAtlas {
         match content_type {
-            ContentType::Color => &mut self.color_atlas,
+            ContentType::Color | ContentType::ColorEgui => &mut self.color_atlas,
             ContentType::Mask => &mut self.mask_atlas,
         }
     }

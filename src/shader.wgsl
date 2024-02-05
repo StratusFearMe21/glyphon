@@ -40,6 +40,27 @@ fn srgb_to_linear(c: f32) -> f32 {
     }
 }
 
+// 0-1 linear  from  0-1 sRGB gamma
+fn linear_from_gamma_rgb(srgb: vec3<f32>) -> vec3<f32> {
+    let cutoff = srgb < vec3<f32>(0.04045);
+    let lower = srgb / vec3<f32>(12.92);
+    let higher = pow((srgb + vec3<f32>(0.055)) / vec3<f32>(1.055), vec3<f32>(2.4));
+    return select(higher, lower, cutoff);
+}
+
+// 0-1 sRGB gamma  from  0-1 linear
+fn gamma_from_linear_rgb(rgb: vec3<f32>) -> vec3<f32> {
+    let cutoff = rgb < vec3<f32>(0.0031308);
+    let lower = rgb * vec3<f32>(12.92);
+    let higher = vec3<f32>(1.055) * pow(rgb, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(higher, lower, cutoff);
+}
+
+// 0-1 sRGBA gamma  from  0-1 linear
+fn gamma_from_linear_rgba(linear_rgba: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(gamma_from_linear_rgb(linear_rgba.rgb), linear_rgba.a);
+}
+
 @vertex
 fn vs_main(in_vert: VertexInput) -> VertexOutput {
     var pos = in_vert.pos;
@@ -77,7 +98,21 @@ fn vs_main(in_vert: VertexInput) -> VertexOutput {
 
     vert_output.position.y *= -1.0;
 
-    let content_type = in_vert.content_type_with_srgb & 0xffffu;
+    var content_type = in_vert.content_type_with_srgb & 0xffffu;
+
+    var dim: vec2<u32> = vec2(0u);
+    switch content_type {
+        case 0u: {
+            dim = textureDimensions(color_atlas_texture);
+            break;
+        }
+        case 1u: {
+            dim = textureDimensions(mask_atlas_texture);
+            break;
+        }
+        default: {}
+    }
+
     let srgb = (in_vert.content_type_with_srgb & 0xffff0000u) >> 16u;
 
     switch srgb {
@@ -97,18 +132,20 @@ fn vs_main(in_vert: VertexInput) -> VertexOutput {
                 f32((color & 0xff000000u) >> 24u) / 255.0,
             );
         }
-        default: {}
-    }
-
-    var dim: vec2<u32> = vec2(0u);
-    switch content_type {
-        case 0u: {
-            dim = textureDimensions(color_atlas_texture);
-            break;
-        }
-        case 1u: {
-            dim = textureDimensions(mask_atlas_texture);
-            break;
+        case 2u: {
+            vert_output.color = vec4<f32>(
+                f32((color & 0x00ff0000u) >> 16u) / 255.0,
+                f32((color & 0x0000ff00u) >> 8u) / 255.0,
+                f32(color & 0x000000ffu) / 255.0,
+                f32((color & 0xff000000u) >> 24u) / 255.0,
+            );
+            switch content_type {
+                case 0u: {
+                    content_type = 2u;
+                    break;
+                }
+                default: {}
+            }
         }
         default: {}
     }
@@ -128,6 +165,9 @@ fn fs_main(in_frag: VertexOutput) -> @location(0) vec4<f32> {
         }
         case 1u: {
             return vec4<f32>(in_frag.color.rgb, in_frag.color.a * textureSampleLevel(mask_atlas_texture, atlas_sampler, in_frag.uv, 0.0).x);
+        }
+        case 2u: {
+            return gamma_from_linear_rgba(textureSampleLevel(color_atlas_texture, atlas_sampler, in_frag.uv, 0.0));
         }
         default: {
             return vec4<f32>(0.0);
